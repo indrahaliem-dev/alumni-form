@@ -464,15 +464,43 @@ function Page() {
                   </label>
 
                   <label className="text-sm text-slate-700">
-                    Sosial Media
-                    <input
-                      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none"
-                      value={formData.email}
-                      onChange={(event) =>
-                        setFormData((prev) => ({ ...prev, email: event.target.value }))
-                      }
-                    />
-                    <span className="text-xs text-slate-500">Instagram, Facebook, Twitter, Lainnya yang memungkinkan di share</span>
+  Sosial Media
+
+                    <div className="mt-3 space-y-3 rounded-xl border border-slate-300 p-4">
+                      {[
+                        "Instagram",
+                        "TikTok",
+                        "X",
+                        "LinkedIn",
+                      ].map((item) => (
+                        <div
+                          key={item}
+                          className="ml-2 flex flex-col gap-2 sm:flex-row sm:items-center"
+                        >
+                          <span className="w-28 text-sm text-slate-600">{item}</span>
+
+                          <input
+                            type="text"
+                            placeholder={`Username / link ${item}`}
+                            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none"
+                          />
+                        </div>
+                      ))}
+
+                      <div className="ml-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <span className="w-28 text-sm text-slate-600">Lainnya</span>
+
+                        <input
+                          type="text"
+                          placeholder="Platform lain yang ingin   dibagikan"
+                          className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <span className="mt-2 block text-xs text-slate-500">
+                      Isi akun yang berkenan untuk dibagikan kepada sesama alumni.
+                    </span>
                   </label>
 
                   <label className="text-sm text-slate-700">
