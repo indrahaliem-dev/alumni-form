@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model AlumniMaster {
+  id          String           @id @default(cuid())
+  nomerInduk  String           @unique
+  namaLengkap String
+  asal        String
+  createdAt   DateTime         @default(now())
+
+  submission  AlumniSubmission?
+
+  @@index([namaLengkap])
+}
+
+
+model AlumniSubmission {
+  id             String      @id @default(cuid())
+  alumniMasterId String      @unique
+  alumniMaster   AlumniMaster @relation(fields: [alumniMasterId], references: [id], onDelete: Cascade)
+
+  domisili       String
+  kesibukan      String
+  kontakPerson   String
+  sosialMedia    String
+  submittedAt    DateTime    @default(now())
+}
