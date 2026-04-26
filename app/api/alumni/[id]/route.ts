@@ -1,10 +1,23 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { getSupabaseClient } from "@/lib/supabase";
 
 export async function GET(
   _req: Request,
   { params }: { params: { id: string } | Promise<{ id: string }> }
 ) {
+  let supabase;
+  try {
+    supabase = getSupabaseClient();
+  } catch (error) {
+    return NextResponse.json(
+      {
+        message:
+          error instanceof Error ? error.message : "Konfigurasi Supabase belum lengkap.",
+      },
+      { status: 500 }
+    );
+  }
+
   const resolvedParams = await Promise.resolve(params);
   const id = resolvedParams?.id;
   if (!id) {

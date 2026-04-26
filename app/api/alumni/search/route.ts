@@ -1,10 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { getSupabaseClient } from "@/lib/supabase";
 
 const MIN_QUERY_LENGTH = 2;
 const RESULT_LIMIT = 20;
 
 export async function GET(request: NextRequest) {
+  let supabase;
+  try {
+    supabase = getSupabaseClient();
+  } catch (error) {
+    return NextResponse.json(
+      {
+        message:
+          error instanceof Error ? error.message : "Konfigurasi Supabase belum lengkap.",
+      },
+      { status: 500 }
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const qRaw = searchParams.get("q") ?? "";
   const q = qRaw.trim();
