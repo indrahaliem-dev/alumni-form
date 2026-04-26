@@ -27,7 +27,7 @@ type FormData = {
   merchandise_vote: string;
 };
 
-const MIN_QUERY_LENGTH = 2;
+const MIN_QUERY_LENGTH = 1;
 const DEBOUNCE_MS = 300;
 const MERCHANDISE_OPTIONS = ["Kaos", "Polo Shirt", "Jaket", "Topi", "Mug"] as const;
 
@@ -275,7 +275,7 @@ function Page() {
           <input
             id="search"
             className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none"
-            placeholder="Ketik minimal 2 karakter..."
+            placeholder="Ketik nama, nomor ID, atau konsulat..."
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);

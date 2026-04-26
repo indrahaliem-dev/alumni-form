@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
 
-const MIN_QUERY_LENGTH = 2;
+const MIN_QUERY_LENGTH = 1;
 const RESULT_LIMIT = 20;
 
 export async function GET(request: NextRequest) {
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await supabase
     .from("alumni_master")
     .select("id, nama, nomor_id, konsulat, sudah_isi")
-    .ilike("nama", `%${q}%`)
+    .or(`nama.ilike.%${q}%,nomor_id.ilike.%${q}%,konsulat.ilike.%${q}%`)
     .order("nama", { ascending: true })
     .limit(RESULT_LIMIT);
 
