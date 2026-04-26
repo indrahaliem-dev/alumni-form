@@ -21,6 +21,7 @@ type AlumniDetail = {
 type FormData = {
   kesibukan: string;
   sosial_media: string;
+  email: string;
   domisili: string;
   ikut_reuni: string;
   ide_alumni: string;
@@ -30,6 +31,10 @@ type FormData = {
 const MIN_QUERY_LENGTH = 1;
 const DEBOUNCE_MS = 300;
 const MERCHANDISE_OPTIONS = ["Kaos", "Polo Shirt", "Jaket", "Topi", "Mug"] as const;
+const UKURAN_OPTIONS = ["S", "M", "L", "XL", "XXL", "XXXL"] as const;
+
+/** Set ke `true` saat UI siap dan submit boleh dipakai lagi. */
+const FORM_SUBMIT_ENABLED = false;
 
 function Page() {
   const [query, setQuery] = useState("");
@@ -48,10 +53,20 @@ function Page() {
   const [formData, setFormData] = useState<FormData>({
     kesibukan: "",
     sosial_media: "",
+    email: "",
     domisili: "",
     ikut_reuni: "",
     ide_alumni: "",
     merchandise_vote: "",
+  });
+  const [merchandiseUI, setMerchandiseUI] = useState<
+    Record<(typeof MERCHANDISE_OPTIONS)[number], { checked: boolean; size: string }>
+  >({
+    Kaos: { checked: false, size: "" },
+    "Polo Shirt": { checked: false, size: "" },
+    Jaket: { checked: false, size: "" },
+    Topi: { checked: false, size: "" },
+    Mug: { checked: false, size: "" },
   });
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -177,16 +192,24 @@ function Page() {
     setFormData({
       kesibukan: "",
       sosial_media: "",
+      email: "",
       domisili: "",
       ikut_reuni: "",
       ide_alumni: "",
       merchandise_vote: "",
     });
+    setMerchandiseUI({
+      Kaos: { checked: false, size: "" },
+      "Polo Shirt": { checked: false, size: "" },
+      Jaket: { checked: false, size: "" },
+      Topi: { checked: false, size: "" },
+      Mug: { checked: false, size: "" },
+    });
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selected || submitLoading) return;
+    if (!FORM_SUBMIT_ENABLED || !selected || submitLoading) return;
 
     setSubmitLoading(true);
     setSubmitError(null);
@@ -238,10 +261,18 @@ function Page() {
       setFormData({
         kesibukan: "",
         sosial_media: "",
+        email: "",
         domisili: "",
         ikut_reuni: "",
         ide_alumni: "",
         merchandise_vote: "",
+      });
+      setMerchandiseUI({
+        Kaos: { checked: false, size: "" },
+        "Polo Shirt": { checked: false, size: "" },
+        Jaket: { checked: false, size: "" },
+        Topi: { checked: false, size: "" },
+        Mug: { checked: false, size: "" },
       });
     } catch (error) {
       setSubmitError(
@@ -355,7 +386,7 @@ function Page() {
                   <span className="font-semibold">Nama:</span> {detail.nama}
                 </p>
                 <p>
-                  <span className="font-semibold">Nomor ID:</span> {detail.nomorId}
+                  <span className="font-semibold">Nomor Stambuk:</span> {detail.nomorId}
                 </p>
                 <p>
                   <span className="font-semibold">Konsulat:</span> {detail.konsulat}
@@ -391,19 +422,22 @@ function Page() {
                 <div className="mt-4 grid gap-4">
                   <label className="text-sm text-slate-700">
                     Kesibukan <span className="text-rose-600">*</span>
-                    <textarea
-                      className="mt-2 min-h-24 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none"
+                    <input
+                      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none"
+                      type="text"
                       value={formData.kesibukan}
                       onChange={(event) =>
                         setFormData((prev) => ({ ...prev, kesibukan: event.target.value }))
                       }
                       required
                     />
+                    <span className="text-xs text-slate-500">Contoh: Mahasiswa, Karyawan, Wiraswasta, Lainnya</span>
                   </label>
 
                   <label className="text-sm text-slate-700">
-                    Sosial Media
+                    Nomer WhatsApp <span className="text-rose-600">*</span>
                     <input
+                      type="text"
                       className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none"
                       value={formData.sosial_media}
                       onChange={(event) =>
@@ -413,6 +447,7 @@ function Page() {
                         }))
                       }
                     />
+                    <span className="text-xs text-slate-500">Contoh: 081234567890</span>
                   </label>
 
                   <label className="text-sm text-slate-700">
@@ -425,6 +460,19 @@ function Page() {
                       }
                       required
                     />
+                    <span className="text-xs text-slate-500">Contoh: tempat tinggal saat ini</span>
+                  </label>
+
+                  <label className="text-sm text-slate-700">
+                    Sosial Media
+                    <input
+                      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none"
+                      value={formData.email}
+                      onChange={(event) =>
+                        setFormData((prev) => ({ ...prev, email: event.target.value }))
+                      }
+                    />
+                    <span className="text-xs text-slate-500">Instagram, Facebook, Twitter, Lainnya yang memungkinkan di share</span>
                   </label>
 
                   <label className="text-sm text-slate-700">
@@ -442,10 +490,11 @@ function Page() {
                       <option value="Tidak">Tidak</option>
                       <option value="Mungkin">Mungkin</option>
                     </select>
+                    <span className="text-xs text-slate-500">Reuni Marhalah 100tahun gontor kemungkinan di bulan september 2026</span>
                   </label>
 
                   <label className="text-sm text-slate-700">
-                    Ide untuk Alumni
+                    Saran untuk Prestigious Cares
                     <textarea
                       className="mt-2 min-h-24 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none"
                       value={formData.ide_alumni}
@@ -453,9 +502,10 @@ function Page() {
                         setFormData((prev) => ({ ...prev, ide_alumni: event.target.value }))
                       }
                     />
+                    <span className="text-xs text-slate-500">Contoh: Saran apapun sangat berharga untuk kita semua</span>
                   </label>
 
-                  <label className="text-sm text-slate-700">
+                  {/*<label className="text-sm text-slate-700">
                     Pilihan Merchandise <span className="text-rose-600">*</span>
                     <select
                       className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none"
@@ -475,7 +525,36 @@ function Page() {
                         </option>
                       ))}
                     </select>
+                  </label>*/}
+
+                  <label className="text-sm text-slate-700">
+                    Pilihan Merchandise
                   </label>
+                  <div className="mt-2 rounded-xl border border-slate-300 p-4">
+                    <div className="flex flex-wrap gap-4">
+                      {["Kaos", "Jaket", "Polo Shirt", "Topi", "Mug"].map((item) => (
+                        <label
+                          key={item}
+                          className="flex items-center gap-2 text-sm text-slate-700"
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-slate-300"
+                          />
+                          <span>{item}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <span className="text-xs text-slate-500">Harga Merchandise akan diumumkan dengan adanya harga tambahan untuk donasi acara Reuni 100tahun</span>
+
+                    <div className="mt-4">
+                      <input
+                        type="text"
+                        placeholder="Ide merchandise lain..."
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:border-slate-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {submitError && (
@@ -491,10 +570,15 @@ function Page() {
 
                 <button
                   type="submit"
-                  disabled={submitLoading}
+                  disabled={submitLoading || !FORM_SUBMIT_ENABLED}
                   className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400 sm:w-auto"
                 >
-                  {submitLoading ? "Menyimpan..." : "Kirim Data"}
+                  {!FORM_SUBMIT_ENABLED
+                    ? "Kirim dinonaktifkan sementara"
+                    : submitLoading
+                      ? "Menyimpan..."
+                      : "Kirim Data"}
+                  {/* hapus saat ready */}
                 </button>
               </form>
             )}
