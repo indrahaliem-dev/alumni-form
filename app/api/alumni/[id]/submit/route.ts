@@ -4,7 +4,7 @@ import {
   mergeLegacyMerchandiseVote,
   mergeLegacySosialMedia,
 } from "@/lib/alumni-response-legacy";
-import { getSupabaseClient } from "@/lib/supabase";
+import { getSupabaseServerClient } from "@/lib/supabase";
 import {
   SUPABASE_TABLE_MASTER,
   SUPABASE_TABLE_RESPONSES,
@@ -38,7 +38,7 @@ export async function POST(
 ) {
   let supabase;
   try {
-    supabase = getSupabaseClient();
+    supabase = getSupabaseServerClient();
   } catch (error) {
     return NextResponse.json(
       {
@@ -53,7 +53,7 @@ export async function POST(
   const id = resolvedParams?.id;
   if (!id) {
     return NextResponse.json(
-      { message: "ID alumni tidak ditemukan" },
+      { message: "ID marhalah tidak ditemukan" },
       { status: 400 }
     );
   }
@@ -68,7 +68,7 @@ export async function POST(
   const alumniId = Number(id);
   if (!Number.isInteger(alumniId)) {
     return NextResponse.json(
-      { message: "ID alumni tidak valid" },
+      { message: "ID marhalah tidak valid" },
       { status: 400 }
     );
   }
@@ -108,6 +108,22 @@ export async function POST(
 
   const responses = SUPABASE_TABLE_RESPONSES;
 
+  const sosialMediaGabungan = mergeLegacySosialMedia({
+    instagram,
+    tiktok,
+    twitter,
+    linkedin,
+    sosial_lainnya: sosialLainnya,
+  });
+
+  /** Hanya untuk DB tanpa kolom `whatsapp` / terpisah: WA tetap digabung ke `sosial_media`. */
+  const sosialMediaLegacySchema = (() => {
+    const base = sosialMediaGabungan;
+    const wa = whatsapp.trim();
+    if (!base) return wa;
+    return wa ? `${wa} | ${base}` : base;
+  })();
+
   const extendedRow = {
     kesibukan,
     whatsapp,
@@ -116,6 +132,8 @@ export async function POST(
     twitter,
     linkedin,
     sosial_lainnya: sosialLainnya,
+    /** Tanpa nomor WA; WA hanya di `whatsapp`. */
+    sosial_media: sosialMediaGabungan,
     domisili,
     ikut_reuni: ikutReuni,
     ide_alumni: ideAlumni,
@@ -125,14 +143,7 @@ export async function POST(
 
   const legacyRow = {
     kesibukan,
-    sosial_media: mergeLegacySosialMedia({
-      whatsapp,
-      instagram,
-      tiktok,
-      twitter,
-      linkedin,
-      sosial_lainnya: sosialLainnya,
-    }),
+    sosial_media: sosialMediaLegacySchema,
     domisili,
     ikut_reuni: ikutReuni,
     ide_alumni: ideAlumni,
@@ -151,16 +162,84 @@ export async function POST(
   if (alumniError) {
     console.error("Get alumni before submit error:", alumniError);
     return NextResponse.json(
-      { message: "Gagal memeriksa data alumni." },
+      { message: "Gagal memeriksa data marhalah." },
       { status: 500 }
     );
   }
 
   if (!alumni) {
-    return NextResponse.json({ message: "Alumni tidak ditemukan" }, { status: 404 });
+    return NextResponse.json({ message: "Data marhalah tidak ditemukan" }, { status: 404 });
   }
 
+  const { count: responseCount, error: countError } = await supabase
+    .from(responses)
+    .select("*", { count: "exact", head: true })
+    .eq("alumni_id", alumniId);
+
+  if (countError) {
+    console.error("Count alumni responses before submit:", countError);
+    return NextResponse.json(
+      { message: "Gagal memeriksa data jawaban." },
+      { status: 500 }
+    );
+  }
+
+  const hasResponse = (responseCount ?? 0) > 0;
+
+  /** Resmi selesai: master `sudah_isi` dan sudah ada jawaban — tidak boleh ubah lagi. */
+  if (alumni.sudah_isi && hasResponse) {
+    return NextResponse.json(
+      {
+        message:
+          "Form pendataan untuk marhalah ini sudah dikirim. Pengisian ulang tidak diperlukan.",
+      },
+      { status: 403 }
+    );
+  }
+
+  /**
+   * Orphan: `sudah_isi` true di master tapi belum ada baris respons (impor/manual).
+   * Satu kali insert perbaikan — tanpa mengubah `sudah_isi` (tetap true).
+   */
   if (alumni.sudah_isi) {
+    let { error: healInsertError } = await supabase.from(responses).insert({
+      alumni_id: alumniId,
+      ...extendedRow,
+    });
+
+    if (healInsertError && isExtendedSchemaUnavailable(healInsertError)) {
+      const healed = await supabase.from(responses).insert({
+        alumni_id: alumniId,
+        ...legacyRow,
+      });
+      healInsertError = healed.error;
+    }
+
+    if (healInsertError) {
+      console.error("[alumni/submit] Orphan sudah_isi: insert jawaban gagal:", healInsertError);
+      return NextResponse.json(
+        {
+          message:
+            healInsertError.message?.includes("row-level security") ||
+            healInsertError.message?.toLowerCase().includes("rls")
+              ? "Akses ditolak oleh kebijakan database (RLS). Periksa policy Supabase untuk anon."
+              : "Gagal menyimpan jawaban. Hubungi admin.",
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(
+      { message: "Data marhalah berhasil disimpan. Terima kasih." },
+      { status: 201 }
+    );
+  }
+
+  /**
+   * Sudah ada baris `alumni_responses` (pra-isi admin/draft), master `sudah_isi` false:
+   * simpan perubahan dari form lalu tandai alumni sebagai selesai di master.
+   */
+  if (hasResponse) {
     let { data: updatedRows, error: updateError } = await supabase
       .from(responses)
       .update(extendedRow)
@@ -193,15 +272,31 @@ export async function POST(
       return NextResponse.json(
         {
           message:
-            "Status alumni sudah terisi, tetapi baris jawaban tidak ditemukan. Hubungi admin.",
+            "Data jawaban tidak ditemukan untuk diperbarui. Hubungi admin.",
         },
         { status: 404 }
       );
     }
 
+    const { error: masterDoneError } = await supabase
+      .from(SUPABASE_TABLE_MASTER)
+      .update({ sudah_isi: true })
+      .eq("id", alumniId);
+
+    if (masterDoneError) {
+      console.error("Update sudah_isi after response update:", masterDoneError);
+      return NextResponse.json(
+        {
+          message:
+            "Jawaban tersimpan, tetapi status marhalah gagal diperbarui. Hubungi admin.",
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
-      { message: "Data alumni berhasil diperbarui. Terima kasih." },
-      { status: 200 }
+      { message: "Terima kasih, data marhalah berhasil disimpan." },
+      { status: 201 }
     );
   }
 
@@ -244,13 +339,13 @@ export async function POST(
   if (updateError) {
     console.error("Update sudah_isi error:", updateError);
     return NextResponse.json(
-      { message: "Jawaban tersimpan, tetapi status alumni gagal diperbarui." },
+      { message: "Jawaban tersimpan, tetapi status marhalah gagal diperbarui." },
       { status: 500 }
     );
   }
 
   return NextResponse.json(
-    { message: "Terima kasih, data alumni berhasil disimpan." },
+    { message: "Terima kasih, data marhalah berhasil disimpan." },
     { status: 201 }
   );
 }

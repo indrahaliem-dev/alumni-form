@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 
 import type { JawabanTerakhirClient as JawabanTerakhir } from "@/lib/alumni-jawaban";
 
@@ -10,6 +18,8 @@ type SearchResult = {
   nomorId: string;
   konsulat: string;
   sudahIsi: boolean;
+  /** Ada minimal satu baris di `alumni_responses` untuk `alumni_master.id` ini (bukan dari nama di respons). */
+  punyaRiwayatJawaban: boolean;
 };
 
 type AlumniDetail = {
@@ -19,6 +29,8 @@ type AlumniDetail = {
   konsulat: string;
   sudahIsi: boolean;
   jawabanTerakhir: JawabanTerakhir | null;
+  /** Dari API bila query `alumni_responses` error (mis. RLS). */
+  responsesQueryFailed?: boolean;
 };
 
 type FormData = {
@@ -56,7 +68,7 @@ function buildMerchandisePilihanCsv(selections: Record<MerchKey, boolean>): stri
   return MERCHANDISE_OPTIONS.filter((k) => selections[k]).join(", ");
 }
 
-/** Membalikkan format gabungan WA + `Label: nilai` yang disimpan di kolom sosial_media. */
+/** Membalikkan format gabungan di `sosial_media` (legacy). */
 function parseStoredSosialMedia(combined: string): Pick<
   FormData,
   "sosial_media" | "instagram" | "tiktok" | "twitter" | "linkedin" | "sosial_lainnya"
@@ -125,6 +137,46 @@ function extractIdeFromMerchandiseVote(vote: string): string {
   return trimmed.slice(idx + marker.length).trim();
 }
 
+function createEmptyFormData(): FormData {
+  return {
+    kesibukan: "",
+    sosial_media: "",
+    sosial_lainnya: "",
+    instagram: "",
+    tiktok: "",
+    twitter: "",
+    linkedin: "",
+    domisili: "",
+    ikut_reuni: "",
+    ide_alumni: "",
+    merchandise_vote: "",
+    merchandise_ide_lain: "",
+  };
+}
+
+/** Samakan `formData` / merchandise dengan `detail` (baris terakhir `alumni_responses`). */
+function applyAlumniDetailToForm(
+  detail: AlumniDetail | null,
+  selected: SearchResult | null,
+  detailLoading: boolean,
+  setFormData: Dispatch<SetStateAction<FormData>>,
+  setMerchandiseSelections: Dispatch<SetStateAction<Record<MerchKey, boolean>>>
+): void {
+  if (!detail || !selected || detailLoading) return;
+  if (String(detail.id) !== String(selected.id)) return;
+  if (detail.sudahIsi) return;
+
+  if (detail.jawabanTerakhir) {
+    const { form, selections } = jawabanToFormData(detail.jawabanTerakhir);
+    setFormData(form);
+    setMerchandiseSelections(selections);
+    return;
+  }
+
+  setFormData(createEmptyFormData());
+  setMerchandiseSelections(emptyMerchandiseSelections());
+}
+
 function jawabanToFormData(j: JawabanTerakhir): {
   form: FormData;
   selections: Record<MerchKey, boolean>;
@@ -169,9 +221,6 @@ function jawabanToFormData(j: JawabanTerakhir): {
   };
 }
 
-/** Set ke `true` saat UI siap dan submit boleh dipakai lagi. */
-const FORM_SUBMIT_ENABLED = false;
-
 function Page() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -186,20 +235,7 @@ function Page() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [thanksMessage, setThanksMessage] = useState<string | null>(null);
 
-  const [formData, setFormData] = useState<FormData>({
-    kesibukan: "",
-    sosial_media: "",
-    sosial_lainnya: "",
-    instagram: "",
-    tiktok: "",
-    twitter: "",
-    linkedin: "",
-    domisili: "",
-    ikut_reuni: "",
-    ide_alumni: "",
-    merchandise_vote: "",
-    merchandise_ide_lain: "",
-  });
+  const [formData, setFormData] = useState<FormData>(() => createEmptyFormData());
   const [merchandiseSelections, setMerchandiseSelections] = useState<
     Record<MerchKey, boolean>
   >(() => emptyMerchandiseSelections());
@@ -208,6 +244,12 @@ function Page() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const trimmedQuery = useMemo(() => query.trim(), [query]);
+
+  /** Form disembunyikan hanya setelah `sudah_isi` di master (pengiriman resmi). Data di `alumni_responses` saja = masih bisa isi/ubah. */
+  const formTerkunci = useMemo(
+    () => Boolean(detail?.sudahIsi),
+    [detail]
+  );
 
   useEffect(() => {
     if (trimmedQuery.length < MIN_QUERY_LENGTH) {
@@ -275,6 +317,7 @@ function Page() {
     if (!selected) {
       setDetail(null);
       setDetailError(null);
+      setDetailLoading(false);
       return;
     }
 
@@ -290,7 +333,7 @@ function Page() {
           cache: "no-store",
         });
         if (!response.ok) {
-          throw new Error("Gagal memuat detail alumni.");
+          throw new Error("Gagal memuat detail marhalah.");
         }
         const data = (await response.json()) as AlumniDetail;
         if (!cancelled) {
@@ -316,14 +359,18 @@ function Page() {
     };
   }, [selected]);
 
-  /** Isi form dari jawaban terakhir di Supabase (setelah nama dipilih & detail termuat). */
-  useEffect(() => {
-    if (!detail || !selected || detail.id !== selected.id) return;
-    if (detailLoading) return;
-    if (!detail.jawabanTerakhir) return;
-    const { form, selections } = jawabanToFormData(detail.jawabanTerakhir);
-    setFormData(form);
-    setMerchandiseSelections(selections);
+  /**
+   * Praisi penuh dari baris terakhir `alumni_responses` (kesibukan, domisili, sosial, merchandise, dll.)
+   * saat nama dipilih dan `detail` sudah termuat — sebelum cat agar nilai default tidak kedip kosong.
+   */
+  useLayoutEffect(() => {
+    applyAlumniDetailToForm(
+      detail,
+      selected,
+      detailLoading,
+      setFormData,
+      setMerchandiseSelections
+    );
   }, [detail, selected, detailLoading]);
 
   const refetchAlumniDetail = async () => {
@@ -346,36 +393,24 @@ function Page() {
     setQuery(item.nama);
     setResults([]);
     setIsDropdownOpen(false);
-    setDetail({
-      id: item.id,
-      nama: item.nama,
-      nomorId: item.nomorId,
-      konsulat: item.konsulat,
-      sudahIsi: item.sudahIsi,
-      jawabanTerakhir: null,
-    });
+    /**
+     * Jangan set `detail` placeholder dengan `jawabanTerakhir: null` sebelum fetch: `useLayoutEffect`
+     * bisa jalan saat `detailLoading` masih false (useEffect belum set true) dan mengosongkan form,
+     * lalu race dengan response API. Tunggu `GET /api/alumni/[id]` yang memuat baris terakhir
+     * `alumni_responses` lewat `alumni_id`.
+     */
+    setDetailLoading(true);
+    setDetail(null);
     setDetailError(null);
     setThanksMessage(null);
-    setFormData({
-      kesibukan: "",
-      sosial_media: "",
-      sosial_lainnya: "",
-      instagram: "",
-      tiktok: "",
-      twitter: "",
-      linkedin: "",
-      domisili: "",
-      ikut_reuni: "",
-      ide_alumni: "",
-      merchandise_vote: "",
-      merchandise_ide_lain: "",
-    });
+    setFormData(createEmptyFormData());
     setMerchandiseSelections(emptyMerchandiseSelections());
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!FORM_SUBMIT_ENABLED || !selected || submitLoading) return;
+    if (!selected || submitLoading) return;
+    if (detail?.sudahIsi) return;
 
     const merchandise_vote = buildMerchandisePilihanCsv(merchandiseSelections);
     const merchandise_ide_lain = formData.merchandise_ide_lain.trim();
@@ -425,27 +460,19 @@ function Page() {
       const successMessage = payload.message ?? "Terima kasih atas partisipasinya.";
       setThanksMessage(successMessage);
       setToastMessage("Data berhasil disimpan.");
-      setDetail((prev) =>
-        prev
-          ? {
-              ...prev,
-              sudahIsi: true,
-            }
-          : prev
-      );
-      setSelected((prev) =>
-        prev
-          ? {
-              ...prev,
-              sudahIsi: true,
-            }
-          : prev
-      );
-      setResults((prev) =>
-        prev.map((item) =>
-          item.id === selected.id ? { ...item, sudahIsi: true } : item
-        )
-      );
+      if (response.status === 201) {
+        setDetail((prev) =>
+          prev ? { ...prev, sudahIsi: true } : prev
+        );
+        setSelected((prev) =>
+          prev ? { ...prev, sudahIsi: true } : prev
+        );
+        setResults((prev) =>
+          prev.map((item) =>
+            item.id === selected.id ? { ...item, sudahIsi: true } : item
+          )
+        );
+      }
       await refetchAlumniDetail();
     } catch (error) {
       setSubmitError(
@@ -461,20 +488,20 @@ function Page() {
       <main className="mx-auto flex w-full max-w-4xl flex-col gap-6">
         <section className="rounded-3xl border border-birch-200 bg-birch-50 p-6 shadow-sm sm:p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.15em] text-birch-500">
-            Portal Alumni
+            Portal Marhalah
           </p>
           <h1 className="mt-2 text-2xl font-bold text-birch-900 sm:text-3xl">
-            Pendataan Alumni
+            Pendataan Marhalah
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-birch-600 sm:text-base">
-            Terima kasih telah meluangkan waktu untuk mengisi data alumni. Data ini
+            Terima kasih telah meluangkan waktu untuk mengisi data marhalah. Data ini
             digunakan untuk mempererat silaturahmi dan persiapan reuni September.
           </p>
         </section>
 
         <section className="relative rounded-3xl border border-birch-200 bg-birch-50 p-6 shadow-sm sm:p-8" ref={searchRef}>
           <label className="text-sm font-medium text-birch-700" htmlFor="search">
-            Cari Nama Alumni
+            Cari Nama Marhalah
           </label>
           <input
             id="search"
@@ -491,7 +518,7 @@ function Page() {
           />
 
           {isSearching && (
-            <p className="mt-2 text-sm text-birch-500">Mencari data alumni...</p>
+            <p className="mt-2 text-sm text-birch-500">Mencari data marhalah...</p>
           )}
           {searchError && (
             <p className="mt-2 text-sm text-birch-terracotta">{searchError}</p>
@@ -510,14 +537,21 @@ function Page() {
                       <span className="text-sm font-medium text-birch-800">
                         {item.nama} - {item.konsulat} - {item.nomorId}
                       </span>
-                      <span
-                        className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                          item.sudahIsi
-                            ? "bg-birch-success-bg text-birch-success-text"
-                            : "bg-birch-warning-bg text-birch-warning-text"
-                        }`}
-                      >
-                        {item.sudahIsi ? "Sudah Mengisi" : "Belum Mengisi"}
+                      <span className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-2">
+                        {item.punyaRiwayatJawaban && !item.sudahIsi ? (
+                          <span className="rounded-full bg-birch-info-bg px-2 py-1 text-xs font-semibold text-birch-info-text">
+                            Sudah pernah isi pra-reuni
+                          </span>
+                        ) : null}
+                        <span
+                          className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                            item.sudahIsi
+                              ? "bg-birch-success-bg text-birch-success-text"
+                              : "bg-birch-warning-bg text-birch-warning-text"
+                          }`}
+                        >
+                          {item.sudahIsi ? "Sudah Mengisi" : "Belum Mengisi"}
+                        </span>
                       </span>
                     </button>
                   </li>
@@ -538,7 +572,7 @@ function Page() {
 
         {detailLoading && (
           <div className="rounded-2xl border border-birch-200 bg-birch-50 p-5 text-sm text-birch-600 shadow-sm">
-            Memuat detail alumni...
+            Memuat detail marhalah...
           </div>
         )}
 
@@ -552,7 +586,7 @@ function Page() {
           <section className="space-y-5">
             <div className="rounded-3xl border border-birch-200 bg-birch-50 p-6 shadow-sm sm:p-8">
               <h2 className="text-lg font-semibold text-birch-900 sm:text-xl">
-                Data Alumni
+                Data Marhalah
               </h2>
               <div className="mt-4 grid gap-3 text-sm text-birch-700">
                 <p>
@@ -564,41 +598,97 @@ function Page() {
                 <p>
                   <span className="font-semibold">Konsulat:</span> {detail.konsulat}
                 </p>
-                <p className="flex items-center gap-2">
+                <p className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold">Status:</span>
                   <span
                     className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                      detail.sudahIsi
+                      formTerkunci
                         ? "bg-birch-success-bg text-birch-success-text"
                         : "bg-birch-warning-bg text-birch-warning-text"
                     }`}
                   >
-                    {detail.sudahIsi ? "Sudah Mengisi" : "Belum Mengisi"}
+                    {formTerkunci ? "Sudah Mengisi" : "Belum Mengisi"}
                   </span>
+                  {!formTerkunci && detail.jawabanTerakhir ? (
+                    <span className="text-xs text-birch-600">
+                      Pendataan pra-reuni sudah pernah diisi — di bawah bisa diperbaiki
+                      bila perlu. Setelah disimpan, data tercatat dan status menjadi Sudah
+                      mengisi.
+                    </span>
+                  ) : null}
                 </p>
               </div>
             </div>
 
-            {detail.jawabanTerakhir && (
-              <div className="rounded-3xl border border-birch-info-border bg-birch-info-bg p-5 text-sm text-birch-info-text shadow-sm sm:text-base">
-                Form di bawah sudah <strong>diisi otomatis dari Supabase</strong> (data
-                respons terakhir untuk nama ini). Silakan lanjutkan seperti mengisi biasa:
-                periksa, lengkapi, atau ubah isian lalu simpan.
-              </div>
-            )}
-            {detail.sudahIsi && !detail.jawabanTerakhir && (
-              <div className="rounded-3xl border border-birch-warning-border bg-birch-warning-bg p-5 text-sm text-birch-warning-text shadow-sm sm:text-base">
-                Status menunjukkan sudah mengisi, tetapi riwayat jawaban tidak ditemukan di
-                server. Silakan lengkapi formulir lalu simpan (atau hubungi admin).
-              </div>
+            {thanksMessage && (
+              <p className="rounded-3xl border border-birch-success-border bg-birch-success-bg p-5 text-sm text-birch-success-text shadow-sm sm:text-base">
+                {thanksMessage}
+              </p>
             )}
 
-            <form
+            {formTerkunci ? (
+              <div className="rounded-3xl border border-birch-200 bg-birch-50 p-6 text-sm text-birch-600 shadow-sm sm:p-8 sm:text-base">
+                <p className="font-medium text-birch-800">
+                  Form pendataan untuk nama ini sudah dikirim. Pengisian ulang tidak
+                  diperlukan.
+                </p>
+                {!detail.jawabanTerakhir ? (
+                  <p className="mt-2 text-birch-600">
+                    Riwayat jawaban tidak tampil di aplikasi. Hubungi admin jika perlu
+                    diperiksa.
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <>
+                {detail.jawabanTerakhir && (
+                  <div className="rounded-3xl border border-birch-info-border bg-birch-info-bg p-5 text-sm leading-relaxed text-birch-info-text shadow-sm sm:text-base">
+                    <p>
+                      <strong>Data antum sudah pernah kami terima</strong> pada pendataan
+                      pra-reuni. Form di bawah sudah kami isi lagi sesuai data yang tersimpan,
+                      supaya antum tidak mulai dari kosong.
+                    </p>
+                    <p className="mt-3">
+                      Kalau ada yang kurang tepat atau ingin diperbarui,{" "}
+                      <strong>silakan ubah langsung di form</strong>, lalu tekan simpan.
+                      Tidak apa-apa mengoreksi — yang penting data akhir sesuai keadaan antum
+                      sekarang.
+                    </p>
+                  </div>
+                )}
+                {detail.responsesQueryFailed && !detail.jawabanTerakhir ? (
+                  <div className="rounded-3xl border border-birch-danger-border bg-birch-danger-bg p-5 text-sm text-birch-danger-text shadow-sm sm:text-base">
+                    <p className="font-medium">
+                      Aplikasi tidak bisa membaca data pra-reuni di server (biasanya karena
+                      pembatasan akses pada basis data, misalnya RLS di Supabase untuk key
+                      anon).
+                    </p>
+                    <p className="mt-2">
+                      Tambahkan{" "}
+                      <code className="rounded bg-birch-100 px-1 py-0.5 text-xs">
+                        SUPABASE_SERVICE_ROLE_KEY
+                      </code>{" "}
+                      di <code className="rounded bg-birch-100 px-1 py-0.5 text-xs">.env.local</code>{" "}
+                      (hanya server, jangan diprefix{" "}
+                      <code className="rounded bg-birch-100 px-1 py-0.5 text-xs">NEXT_PUBLIC_</code>
+                      ), lalu restart <code className="rounded bg-birch-100 px-1 py-0.5 text-xs">npm run dev</code>.
+                      Atur juga RLS agar anon boleh memilih baris respons jika ingin tetap tanpa service role.
+                    </p>
+                  </div>
+                ) : null}
+                {!detail.jawabanTerakhir && !detail.responsesQueryFailed ? (
+                  <div className="rounded-3xl border border-birch-warning-border bg-birch-warning-bg p-5 text-sm text-birch-warning-text shadow-sm sm:text-base">
+                    Belum ada riwayat jawaban di server untuk nama ini. Silakan lengkapi
+                    formulir lalu simpan.
+                  </div>
+                ) : null}
+
+                <form
               className="rounded-3xl border border-birch-200 bg-birch-50 p-6 shadow-sm sm:p-8"
               onSubmit={handleSubmit}
             >
               <h3 className="text-lg font-semibold text-birch-900">
-                Form Pendataan Alumni
+                Form Pendataan Marhalah
               </h3>
 
                 <div className="mt-4 grid gap-4">
@@ -698,7 +788,7 @@ function Page() {
                     </div>
 
                     <span className="mt-2 block text-xs text-birch-500">
-                      Isi akun yang berkenan untuk dibagikan kepada sesama alumni.
+                      Isi akun yang berkenan untuk dibagikan kepada sesama marhalah.
                     </span>
                   </label>
 
@@ -806,25 +896,17 @@ function Page() {
                     {submitError}
                   </p>
                 )}
-                {thanksMessage && (
-                  <p className="mt-4 rounded-xl border border-birch-success-border bg-birch-success-bg px-4 py-3 text-sm text-birch-success-text">
-                    {thanksMessage}
-                  </p>
-                )}
 
                 <button
                   type="submit"
-                  disabled={submitLoading || !FORM_SUBMIT_ENABLED}
+                  disabled={submitLoading}
                   className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-birch-bark px-6 py-3 text-sm font-semibold text-birch-50 transition hover:bg-birch-800 disabled:cursor-not-allowed disabled:bg-birch-300 sm:w-auto"
                 >
-                  {!FORM_SUBMIT_ENABLED
-                    ? "Kirim dinonaktifkan sementara"
-                    : submitLoading
-                      ? "Menyimpan..."
-                      : "Kirim Data"}
-                  {/* hapus saat ready */}
+                  {submitLoading ? "Menyimpan..." : "Simpan data"}
                 </button>
               </form>
+              </>
+            )}
           </section>
         )}
       </main>

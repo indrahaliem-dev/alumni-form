@@ -1,7 +1,6 @@
-/** Format lama: satu kolom `sosial_media` + `merchandise_vote` berisi "Ide lain:" */
+/** Format lama: kolom `sosial_media` = gabungan label sosial (tanpa WA). WA hanya di `whatsapp`. */
 
 export function mergeLegacySosialMedia(parts: {
-  whatsapp: string;
   instagram: string;
   tiktok: string;
   twitter: string;
@@ -15,13 +14,10 @@ export function mergeLegacySosialMedia(parts: {
     ["LinkedIn", parts.linkedin],
     ["Lainnya", parts.sosial_lainnya],
   ];
-  const tambahan = rows
+  return rows
     .filter(([, v]) => v.trim())
     .map(([label, v]) => `${label}: ${v.trim()}`)
     .join(" | ");
-  const wa = parts.whatsapp.trim();
-  if (!tambahan) return wa;
-  return wa ? `${wa} | ${tambahan}` : tambahan;
 }
 
 export function mergeLegacyMerchandiseVote(vote: string, ideLain: string): string {

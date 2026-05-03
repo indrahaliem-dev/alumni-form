@@ -4,6 +4,7 @@ import path from "node:path";
 import * as xlsx from "xlsx";
 
 import { prisma } from "../lib/prisma";
+import { loadEnvLocal } from "./load-env-local";
 
 type RawRow = Record<string, unknown>;
 
@@ -13,6 +14,15 @@ const resolvedPath = path.isAbsolute(inputPath)
   : path.resolve(process.cwd(), inputPath);
 
 async function main() {
+  loadEnvLocal();
+
+  if (!process.env.DATABASE_URL?.trim()) {
+    console.error(
+      "Butuh DATABASE_URL di .env.local — connection string Postgres Supabase (port 5432, bukan file Excel)."
+    );
+    process.exit(1);
+  }
+
   if (!fs.existsSync(resolvedPath)) {
     console.error(`File not found: ${resolvedPath}`);
     process.exit(1);
@@ -34,38 +44,44 @@ async function main() {
   let skipped = 0;
 
   for (const row of rows) {
-    const nomerInduk = String(row["nomer_induk"] ?? "").trim();
-    const namaLengkap = String(row["nama_lengkap"] ?? "").trim();
-    const asal = String(row["asal"] ?? "").trim();
+    const nomorId = String(row["nomer_induk"] ?? row["nomor_id"] ?? "").trim();
+    const nama = String(row["nama_lengkap"] ?? row["nama"] ?? "").trim();
+    const konsulat = String(row["asal"] ?? row["konsulat"] ?? "").trim();
 
-    if (!nomerInduk || !namaLengkap) {
+    if (!nomorId || !nama) {
       skipped += 1;
       continue;
     }
 
     processed += 1;
 
-    const existing = await prisma.alumniMaster.findUnique({
-      where: { nomerInduk },
+    const existing = await prisma.alumniMaster.findFirst({
+      where: { nomorId },
       select: { id: true },
     });
 
     if (existing) {
-      updated += 1;
       await prisma.alumniMaster.update({
-        where: { nomerInduk },
-        data: { namaLengkap, asal },
+        where: { id: existing.id },
+        data: { nama, konsulat },
       });
+      updated += 1;
     } else {
-      inserted += 1;
       await prisma.alumniMaster.create({
-        data: { nomerInduk, namaLengkap, asal },
+        data: {
+          nomorId,
+          nama,
+          konsulat,
+          sudahIsi: false,
+        },
       });
+      inserted += 1;
     }
   }
 
   console.log(
     [
+      "Target: Supabase Postgres (DATABASE_URL)",
       `Processed: ${processed}`,
       `Inserted: ${inserted}`,
       `Updated: ${updated}`,

@@ -1,33 +1,49 @@
+// Koneksi langsung ke Postgres Supabase (bukan SQLite / file lokal).
+// DATABASE_URL: Dashboard → Settings → Database → Connection string (URI), port 5432.
+// Bila memakai pooler 6543 + `prisma migrate`, tambahkan `directUrl` di datasource (lihat README).
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model AlumniMaster {
-  id          String           @id @default(cuid())
-  nomerInduk  String           @unique
-  namaLengkap String
-  asal        String
-  createdAt   DateTime         @default(now())
+  id        BigInt   @id @default(autoincrement())
+  nama      String
+  nomorId   String   @map("nomor_id") @default("")
+  konsulat  String   @default("")
+  sudahIsi  Boolean  @map("sudah_isi") @default(false)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6) @default(now())
 
-  submission  AlumniSubmission?
+  responses AlumniResponse[]
 
-  @@index([namaLengkap])
+  @@map("alumni_master")
 }
 
+model AlumniResponse {
+  id                 BigInt   @id @default(autoincrement())
+  alumniId           BigInt   @map("alumni_id")
+  kesibukan          String?
+  sosialMedia        String?  @map("sosial_media")
+  whatsapp           String?
+  instagram          String?
+  tiktok             String?
+  twitter            String?
+  linkedin           String?
+  sosialLainnya      String?  @map("sosial_lainnya")
+  domisili           String?
+  ikutReuni          String?  @map("ikut_reuni")
+  ideAlumni          String?  @map("ide_alumni")
+  merchandiseVote    String?  @map("merchandise_vote")
+  merchandiseIdeLain String? @map("merchandise_ide_lain")
+  createdAt          DateTime @map("created_at") @db.Timestamptz(6) @default(now())
 
-model AlumniSubmission {
-  id             String      @id @default(cuid())
-  alumniMasterId String      @unique
-  alumniMaster   AlumniMaster @relation(fields: [alumniMasterId], references: [id], onDelete: Cascade)
+  alumni AlumniMaster @relation(fields: [alumniId], references: [id], onDelete: Cascade)
 
-  domisili       String
-  kesibukan      String
-  kontakPerson   String
-  sosialMedia    String
-  submittedAt    DateTime    @default(now())
+  @@index([alumniId])
+  @@map("alumni_responses")
 }

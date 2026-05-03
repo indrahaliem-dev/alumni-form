@@ -38,7 +38,7 @@ export default function Home() {
           </p>
 
           <p className="text-birch-600 leading-relaxed">
-            Data yang Antum isi akan digunakan untuk:
+            Data yang antum isi akan digunakan untuk:
           </p>
 
           <ul className="list-disc pl-5 text-birch-600 space-y-1">
@@ -49,13 +49,13 @@ export default function Home() {
           </ul>
 
           <p className="text-birch-600 leading-relaxed">
-            Bagi Antum yang sebelumnya sudah pernah mengisi data,
+            Bagi antum yang sebelumnya sudah pernah mengisi data,
             sistem akan menampilkan data tersebut secara otomatis dan
             dapat diperbarui jika terdapat perubahan.
           </p>
 
           <p className="text-birch-600 leading-relaxed">
-            Kami mengucapkan terima kasih atas partisipasi Antum.
+            Kami mengucapkan terima kasih atas partisipasi antum.
             Semoga ini menjadi bagian dari ikhtiar dalam menjaga ukhuwah
             dan kontribusi untuk Pondok tercinta.
           </p>
@@ -72,7 +72,7 @@ export default function Home() {
 
         <div className="mt-10 rounded-2xl border border-birch-200 bg-birch-100 p-5 text-sm text-birch-600 leading-relaxed">
           <p>
-            Apabila nama Antum belum tersedia pada daftar marhalah, silakan
+            Apabila nama antum belum tersedia pada daftar marhalah, silakan
             hubungi{" "}
             <a
               href="https://wa.me/082111836455"

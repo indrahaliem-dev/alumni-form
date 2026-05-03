@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Prestigious Form",
-  description: "Form Data Alumni",
+  description: "Form Data Marhalah",
   icons: {
     icon: "/logo.png",
     shortcut: "/logo.png",

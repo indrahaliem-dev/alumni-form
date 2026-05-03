@@ -47,4 +47,3 @@ env.local
 *.db-journal
 data/*.xlsx
 data/*.xls
-/app/generated/prisma

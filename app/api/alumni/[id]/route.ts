@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ALUMNI_RESPONSE_SELECT, alumniResponseRowToClient } from "@/lib/alumni-jawaban";
-import { getSupabaseClient } from "@/lib/supabase";
+import { getSupabaseServerClient } from "@/lib/supabase";
 import { SUPABASE_TABLE_MASTER, SUPABASE_TABLE_RESPONSES } from "@/lib/supabase-schema";
 
 export async function GET(
@@ -9,7 +9,7 @@ export async function GET(
 ) {
   let supabase;
   try {
-    supabase = getSupabaseClient();
+    supabase = getSupabaseServerClient();
   } catch (error) {
     return NextResponse.json(
       {
@@ -23,12 +23,12 @@ export async function GET(
   const resolvedParams = await Promise.resolve(params);
   const id = resolvedParams?.id;
   if (!id) {
-    return NextResponse.json({ message: "ID alumni tidak ditemukan" }, { status: 400 });
+    return NextResponse.json({ message: "ID marhalah tidak ditemukan" }, { status: 400 });
   }
 
   const alumniId = Number(id);
   if (!Number.isInteger(alumniId)) {
-    return NextResponse.json({ message: "ID alumni tidak valid" }, { status: 400 });
+    return NextResponse.json({ message: "ID marhalah tidak valid" }, { status: 400 });
   }
 
   const { data, error } = await supabase
@@ -40,24 +40,25 @@ export async function GET(
   if (error) {
     console.error("Get alumni detail error:", error);
     return NextResponse.json(
-      { message: "Gagal memuat detail alumni." },
+      { message: "Gagal memuat detail marhalah." },
       { status: 500 }
     );
   }
 
   if (!data) {
-    return NextResponse.json({ message: "Data alumni tidak ditemukan" }, { status: 404 });
+    return NextResponse.json({ message: "Data marhalah tidak ditemukan" }, { status: 404 });
   }
 
-  const { data: responseRow, error: responseError } = await supabase
+  const { data: responseRows, error: responseError } = await supabase
     .from(SUPABASE_TABLE_RESPONSES)
     .select(ALUMNI_RESPONSE_SELECT)
     .eq("alumni_id", alumniId)
     .order("id", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
 
   let jawabanTerakhir = null as ReturnType<typeof alumniResponseRowToClient> | null;
+  const responseRow = Array.isArray(responseRows) ? responseRows[0] : null;
+
   if (responseError) {
     console.error("Get alumni response error (form tetap dibuka, tanpa prapengisian):", responseError);
   } else if (responseRow) {
@@ -71,5 +72,7 @@ export async function GET(
     konsulat: data.konsulat ?? "",
     sudahIsi: Boolean(data.sudah_isi),
     jawabanTerakhir,
+    /** True bila query `alumni_responses` gagal (sering karena RLS + hanya anon key di server). */
+    responsesQueryFailed: Boolean(responseError),
   });
 }
