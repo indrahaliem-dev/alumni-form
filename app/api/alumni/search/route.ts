@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabase";
+import { SUPABASE_TABLE_MASTER } from "@/lib/supabase-schema";
 
 const MIN_QUERY_LENGTH = 1;
 const RESULT_LIMIT = 20;
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
   }
 
   const { data, error } = await supabase
-    .from("alumni_master")
+    .from(SUPABASE_TABLE_MASTER)
     .select("id, nama, nomor_id, konsulat, sudah_isi")
     .or(`nama.ilike.%${q}%,nomor_id.ilike.%${q}%,konsulat.ilike.%${q}%`)
     .order("nama", { ascending: true })

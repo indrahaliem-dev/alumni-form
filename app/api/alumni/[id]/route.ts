@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { ALUMNI_RESPONSE_SELECT, alumniResponseRowToClient } from "@/lib/alumni-jawaban";
 import { getSupabaseClient } from "@/lib/supabase";
+import { SUPABASE_TABLE_MASTER, SUPABASE_TABLE_RESPONSES } from "@/lib/supabase-schema";
 
 export async function GET(
   _req: Request,
@@ -30,7 +32,7 @@ export async function GET(
   }
 
   const { data, error } = await supabase
-    .from("alumni_master")
+    .from(SUPABASE_TABLE_MASTER)
     .select("id, nama, nomor_id, konsulat, sudah_isi")
     .eq("id", alumniId)
     .maybeSingle();
@@ -47,11 +49,27 @@ export async function GET(
     return NextResponse.json({ message: "Data alumni tidak ditemukan" }, { status: 404 });
   }
 
+  const { data: responseRow, error: responseError } = await supabase
+    .from(SUPABASE_TABLE_RESPONSES)
+    .select(ALUMNI_RESPONSE_SELECT)
+    .eq("alumni_id", alumniId)
+    .order("id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let jawabanTerakhir = null as ReturnType<typeof alumniResponseRowToClient> | null;
+  if (responseError) {
+    console.error("Get alumni response error (form tetap dibuka, tanpa prapengisian):", responseError);
+  } else if (responseRow) {
+    jawabanTerakhir = alumniResponseRowToClient(responseRow);
+  }
+
   return NextResponse.json({
     id: String(data.id),
     nama: data.nama ?? "",
     nomorId: data.nomor_id ?? "",
     konsulat: data.konsulat ?? "",
     sudahIsi: Boolean(data.sudah_isi),
+    jawabanTerakhir,
   });
 }

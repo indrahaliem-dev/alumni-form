@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
+/* Tone birch: kertas hangat, kulit kayu ringan, sage lembut */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #ebe4d8;
+  --foreground: #2a2520;
 }
 
 @theme inline {
@@ -10,17 +11,42 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-birch-50: #fffdf9;
+  --color-birch-100: #f7f1e8;
+  --color-birch-200: #e8dfd2;
+  --color-birch-300: #d4c9bb;
+  --color-birch-400: #a89b8c;
+  --color-birch-500: #857a6e;
+  --color-birch-600: #6a6156;
+  --color-birch-700: #524a42;
+  --color-birch-800: #3d3730;
+  --color-birch-900: #2a2520;
+
+  --color-birch-bark: #3f3830;
+  --color-birch-sage: #6f7d66;
+  --color-birch-terracotta: #b45548;
+  --color-birch-link: #556b7d;
+
+  --color-birch-danger-bg: #f8edea;
+  --color-birch-danger-border: #e8ccc4;
+  --color-birch-danger-text: #8b4034;
+
+  --color-birch-success-bg: #e9f0e6;
+  --color-birch-success-border: #c5d4be;
+  --color-birch-success-text: #3d5c36;
+
+  --color-birch-warning-bg: #f5ebe0;
+  --color-birch-warning-border: #e5d4c0;
+  --color-birch-warning-text: #6b522c;
+
+  --color-birch-info-bg: #e6eef0;
+  --color-birch-info-border: #c5d5db;
+  --color-birch-info-text: #3a4a52;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }

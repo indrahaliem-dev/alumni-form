@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import type { JawabanTerakhirClient as JawabanTerakhir } from "@/lib/alumni-jawaban";
+
 type SearchResult = {
   id: string;
   nama: string;
@@ -16,22 +18,156 @@ type AlumniDetail = {
   nomorId: string;
   konsulat: string;
   sudahIsi: boolean;
+  jawabanTerakhir: JawabanTerakhir | null;
 };
 
 type FormData = {
   kesibukan: string;
   sosial_media: string;
-  email: string;
+  sosial_lainnya: string;
+  instagram: string;
+  tiktok: string;
+  twitter: string;
+  linkedin: string;
   domisili: string;
   ikut_reuni: string;
   ide_alumni: string;
   merchandise_vote: string;
+  merchandise_ide_lain: string;
 };
 
 const MIN_QUERY_LENGTH = 1;
 const DEBOUNCE_MS = 300;
 const MERCHANDISE_OPTIONS = ["Kaos", "Polo Shirt", "Jaket", "Topi", "Mug"] as const;
-const UKURAN_OPTIONS = ["S", "M", "L", "XL", "XXL", "XXXL"] as const;
+
+type MerchKey = (typeof MERCHANDISE_OPTIONS)[number];
+
+function emptyMerchandiseSelections(): Record<MerchKey, boolean> {
+  return MERCHANDISE_OPTIONS.reduce(
+    (acc, key) => {
+      acc[key] = false;
+      return acc;
+    },
+    {} as Record<MerchKey, boolean>
+  );
+}
+
+function buildMerchandisePilihanCsv(selections: Record<MerchKey, boolean>): string {
+  return MERCHANDISE_OPTIONS.filter((k) => selections[k]).join(", ");
+}
+
+/** Membalikkan format gabungan WA + `Label: nilai` yang disimpan di kolom sosial_media. */
+function parseStoredSosialMedia(combined: string): Pick<
+  FormData,
+  "sosial_media" | "instagram" | "tiktok" | "twitter" | "linkedin" | "sosial_lainnya"
+> {
+  const out = {
+    sosial_media: "",
+    instagram: "",
+    tiktok: "",
+    twitter: "",
+    linkedin: "",
+    sosial_lainnya: "",
+  };
+  const trimmed = combined.trim();
+  if (!trimmed) return out;
+
+  const prefixes = [
+    ["Instagram:", "instagram"],
+    ["TikTok:", "tiktok"],
+    ["X:", "twitter"],
+    ["LinkedIn:", "linkedin"],
+    ["Lainnya:", "sosial_lainnya"],
+  ] as const;
+
+  for (const part of trimmed.split(" | ")) {
+    const p = part.trim();
+    if (!p) continue;
+    let labeled = false;
+    for (const [prefix, key] of prefixes) {
+      if (p.startsWith(prefix)) {
+        out[key] = p.slice(prefix.length).trim();
+        labeled = true;
+        break;
+      }
+    }
+    if (!labeled) {
+      out.sosial_media = out.sosial_media ? `${out.sosial_media} | ${p}` : p;
+    }
+  }
+  return out;
+}
+
+function parseMerchandiseSelectionsOnly(vote: string): Record<MerchKey, boolean> {
+  const selections = emptyMerchandiseSelections();
+  const trimmed = vote.trim();
+  if (!trimmed) return selections;
+
+  const marker = "Ide lain:";
+  const mainPart = trimmed.includes(marker)
+    ? trimmed.slice(0, trimmed.indexOf(marker)).replace(/,\s*$/, "").trim()
+    : trimmed;
+  if (!mainPart) return selections;
+
+  for (const token of mainPart.split(", ").map((t) => t.trim()).filter(Boolean)) {
+    if ((MERCHANDISE_OPTIONS as readonly string[]).includes(token)) {
+      selections[token as MerchKey] = true;
+    }
+  }
+  return selections;
+}
+
+function extractIdeFromMerchandiseVote(vote: string): string {
+  const trimmed = vote.trim();
+  const marker = "Ide lain:";
+  const idx = trimmed.indexOf(marker);
+  if (idx === -1) return "";
+  return trimmed.slice(idx + marker.length).trim();
+}
+
+function jawabanToFormData(j: JawabanTerakhir): {
+  form: FormData;
+  selections: Record<MerchKey, boolean>;
+} {
+  let sosial_media = j.whatsapp;
+  let instagram = j.instagram;
+  let tiktok = j.tiktok;
+  let twitter = j.twitter;
+  let linkedin = j.linkedin;
+  let sosial_lainnya = j.sosialLainnya;
+
+  if (j.sosialMediaLegacy) {
+    const parsed = parseStoredSosialMedia(j.sosialMediaLegacy);
+    if (!sosial_media.trim()) sosial_media = parsed.sosial_media;
+    if (!instagram.trim()) instagram = parsed.instagram;
+    if (!tiktok.trim()) tiktok = parsed.tiktok;
+    if (!twitter.trim()) twitter = parsed.twitter;
+    if (!linkedin.trim()) linkedin = parsed.linkedin;
+    if (!sosial_lainnya.trim()) sosial_lainnya = parsed.sosial_lainnya;
+  }
+
+  const selections = parseMerchandiseSelectionsOnly(j.merchandiseVote);
+  const ideLain =
+    (j.merchandiseIdeLain ?? "").trim() || extractIdeFromMerchandiseVote(j.merchandiseVote);
+
+  return {
+    form: {
+      kesibukan: j.kesibukan,
+      sosial_media,
+      sosial_lainnya,
+      instagram,
+      tiktok,
+      twitter,
+      linkedin,
+      domisili: j.domisili,
+      ikut_reuni: j.ikutReuni,
+      ide_alumni: j.ideAlumni,
+      merchandise_vote: "",
+      merchandise_ide_lain: ideLain,
+    },
+    selections,
+  };
+}
 
 /** Set ke `true` saat UI siap dan submit boleh dipakai lagi. */
 const FORM_SUBMIT_ENABLED = false;
@@ -53,21 +189,20 @@ function Page() {
   const [formData, setFormData] = useState<FormData>({
     kesibukan: "",
     sosial_media: "",
-    email: "",
+    sosial_lainnya: "",
+    instagram: "",
+    tiktok: "",
+    twitter: "",
+    linkedin: "",
     domisili: "",
     ikut_reuni: "",
     ide_alumni: "",
     merchandise_vote: "",
+    merchandise_ide_lain: "",
   });
-  const [merchandiseUI, setMerchandiseUI] = useState<
-    Record<(typeof MERCHANDISE_OPTIONS)[number], { checked: boolean; size: string }>
-  >({
-    Kaos: { checked: false, size: "" },
-    "Polo Shirt": { checked: false, size: "" },
-    Jaket: { checked: false, size: "" },
-    Topi: { checked: false, size: "" },
-    Mug: { checked: false, size: "" },
-  });
+  const [merchandiseSelections, setMerchandiseSelections] = useState<
+    Record<MerchKey, boolean>
+  >(() => emptyMerchandiseSelections());
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -181,35 +316,75 @@ function Page() {
     };
   }, [selected]);
 
+  /** Isi form dari jawaban terakhir di Supabase (setelah nama dipilih & detail termuat). */
+  useEffect(() => {
+    if (!detail || !selected || detail.id !== selected.id) return;
+    if (detailLoading) return;
+    if (!detail.jawabanTerakhir) return;
+    const { form, selections } = jawabanToFormData(detail.jawabanTerakhir);
+    setFormData(form);
+    setMerchandiseSelections(selections);
+  }, [detail, selected, detailLoading]);
+
+  const refetchAlumniDetail = async () => {
+    if (!selected) return;
+    try {
+      const response = await fetch(`/api/alumni/${selected.id}`, {
+        cache: "no-store",
+      });
+      if (response.ok) {
+        const data = (await response.json()) as AlumniDetail;
+        setDetail(data);
+      }
+    } catch {
+      /* biarkan detail lama */
+    }
+  };
+
   const handleSelect = (item: SearchResult) => {
     setSelected(item);
     setQuery(item.nama);
     setResults([]);
     setIsDropdownOpen(false);
-    setDetail(item);
+    setDetail({
+      id: item.id,
+      nama: item.nama,
+      nomorId: item.nomorId,
+      konsulat: item.konsulat,
+      sudahIsi: item.sudahIsi,
+      jawabanTerakhir: null,
+    });
     setDetailError(null);
     setThanksMessage(null);
     setFormData({
       kesibukan: "",
       sosial_media: "",
-      email: "",
+      sosial_lainnya: "",
+      instagram: "",
+      tiktok: "",
+      twitter: "",
+      linkedin: "",
       domisili: "",
       ikut_reuni: "",
       ide_alumni: "",
       merchandise_vote: "",
+      merchandise_ide_lain: "",
     });
-    setMerchandiseUI({
-      Kaos: { checked: false, size: "" },
-      "Polo Shirt": { checked: false, size: "" },
-      Jaket: { checked: false, size: "" },
-      Topi: { checked: false, size: "" },
-      Mug: { checked: false, size: "" },
-    });
+    setMerchandiseSelections(emptyMerchandiseSelections());
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!FORM_SUBMIT_ENABLED || !selected || submitLoading) return;
+
+    const merchandise_vote = buildMerchandisePilihanCsv(merchandiseSelections);
+    const merchandise_ide_lain = formData.merchandise_ide_lain.trim();
+    if (!merchandise_vote && !merchandise_ide_lain) {
+      setSubmitError(
+        "Pilih minimal satu merchandise atau isi ide merchandise lain."
+      );
+      return;
+    }
 
     setSubmitLoading(true);
     setSubmitError(null);
@@ -219,7 +394,20 @@ function Page() {
       const response = await fetch(`/api/alumni/${selected.id}/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          kesibukan: formData.kesibukan,
+          sosial_media: formData.sosial_media,
+          instagram: formData.instagram,
+          tiktok: formData.tiktok,
+          twitter: formData.twitter,
+          linkedin: formData.linkedin,
+          sosial_lainnya: formData.sosial_lainnya,
+          domisili: formData.domisili,
+          ikut_reuni: formData.ikut_reuni,
+          ide_alumni: formData.ide_alumni,
+          merchandise_vote,
+          merchandise_ide_lain,
+        }),
       });
 
       let payload: { message?: string } = {};
@@ -258,22 +446,7 @@ function Page() {
           item.id === selected.id ? { ...item, sudahIsi: true } : item
         )
       );
-      setFormData({
-        kesibukan: "",
-        sosial_media: "",
-        email: "",
-        domisili: "",
-        ikut_reuni: "",
-        ide_alumni: "",
-        merchandise_vote: "",
-      });
-      setMerchandiseUI({
-        Kaos: { checked: false, size: "" },
-        "Polo Shirt": { checked: false, size: "" },
-        Jaket: { checked: false, size: "" },
-        Topi: { checked: false, size: "" },
-        Mug: { checked: false, size: "" },
-      });
+      await refetchAlumniDetail();
     } catch (error) {
       setSubmitError(
         error instanceof Error ? error.message : "Gagal mengirim data."
@@ -284,28 +457,28 @@ function Page() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6">
+    <div className="min-h-screen bg-birch-100 px-4 py-10 sm:px-6">
       <main className="mx-auto flex w-full max-w-4xl flex-col gap-6">
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">
+        <section className="rounded-3xl border border-birch-200 bg-birch-50 p-6 shadow-sm sm:p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-birch-500">
             Portal Alumni
           </p>
-          <h1 className="mt-2 text-2xl font-bold text-slate-900 sm:text-3xl">
+          <h1 className="mt-2 text-2xl font-bold text-birch-900 sm:text-3xl">
             Pendataan Alumni
           </h1>
-          <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">
+          <p className="mt-3 text-sm leading-relaxed text-birch-600 sm:text-base">
             Terima kasih telah meluangkan waktu untuk mengisi data alumni. Data ini
             digunakan untuk mempererat silaturahmi dan persiapan reuni September.
           </p>
         </section>
 
-        <section className="relative rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8" ref={searchRef}>
-          <label className="text-sm font-medium text-slate-700" htmlFor="search">
+        <section className="relative rounded-3xl border border-birch-200 bg-birch-50 p-6 shadow-sm sm:p-8" ref={searchRef}>
+          <label className="text-sm font-medium text-birch-700" htmlFor="search">
             Cari Nama Alumni
           </label>
           <input
             id="search"
-            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm focus:border-slate-500 focus:outline-none"
+            className="mt-2 w-full rounded-xl border border-birch-300 bg-birch-50 px-4 py-3 text-birch-900 shadow-sm focus:border-birch-sage focus:outline-none"
             placeholder="Ketik nama, nomor ID, atau konsulat..."
             value={query}
             onChange={(event) => {
@@ -318,30 +491,30 @@ function Page() {
           />
 
           {isSearching && (
-            <p className="mt-2 text-sm text-slate-500">Mencari data alumni...</p>
+            <p className="mt-2 text-sm text-birch-500">Mencari data alumni...</p>
           )}
           {searchError && (
-            <p className="mt-2 text-sm text-rose-600">{searchError}</p>
+            <p className="mt-2 text-sm text-birch-terracotta">{searchError}</p>
           )}
 
           {isDropdownOpen && results.length > 0 && (
-            <div className="absolute left-6 right-6 z-20 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+            <div className="absolute left-6 right-6 z-20 mt-2 overflow-hidden rounded-xl border border-birch-200 bg-birch-50 shadow-lg">
               <ul className="max-h-80 overflow-y-auto py-2">
                 {results.map((item) => (
                   <li key={item.id}>
                     <button
                       type="button"
                       onClick={() => handleSelect(item)}
-                      className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left hover:bg-slate-50"
+                      className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left hover:bg-birch-100"
                     >
-                      <span className="text-sm font-medium text-slate-800">
+                      <span className="text-sm font-medium text-birch-800">
                         {item.nama} - {item.konsulat} - {item.nomorId}
                       </span>
                       <span
                         className={`rounded-full px-2 py-1 text-xs font-semibold ${
                           item.sudahIsi
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-amber-100 text-amber-700"
+                            ? "bg-birch-success-bg text-birch-success-text"
+                            : "bg-birch-warning-bg text-birch-warning-text"
                         }`}
                       >
                         {item.sudahIsi ? "Sudah Mengisi" : "Belum Mengisi"}
@@ -357,31 +530,31 @@ function Page() {
             trimmedQuery.length >= MIN_QUERY_LENGTH &&
             results.length === 0 &&
             !searchError && (
-              <div className="absolute left-6 right-6 z-20 mt-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-lg">
+              <div className="absolute left-6 right-6 z-20 mt-2 rounded-xl border border-birch-200 bg-birch-50 px-4 py-3 text-sm text-birch-600 shadow-lg">
                 Data tidak ditemukan. Coba cek ejaan nama, konsulat, atau nomor ID.
               </div>
             )}
         </section>
 
         {detailLoading && (
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm">
+          <div className="rounded-2xl border border-birch-200 bg-birch-50 p-5 text-sm text-birch-600 shadow-sm">
             Memuat detail alumni...
           </div>
         )}
 
         {detailError && (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700 shadow-sm">
+          <div className="rounded-2xl border border-birch-danger-border bg-birch-danger-bg p-5 text-sm text-birch-danger-text shadow-sm">
             {detailError}
           </div>
         )}
 
         {detail && !detailLoading && (
           <section className="space-y-5">
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-              <h2 className="text-lg font-semibold text-slate-900 sm:text-xl">
+            <div className="rounded-3xl border border-birch-200 bg-birch-50 p-6 shadow-sm sm:p-8">
+              <h2 className="text-lg font-semibold text-birch-900 sm:text-xl">
                 Data Alumni
               </h2>
-              <div className="mt-4 grid gap-3 text-sm text-slate-700">
+              <div className="mt-4 grid gap-3 text-sm text-birch-700">
                 <p>
                   <span className="font-semibold">Nama:</span> {detail.nama}
                 </p>
@@ -396,8 +569,8 @@ function Page() {
                   <span
                     className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
                       detail.sudahIsi
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-amber-100 text-amber-700"
+                        ? "bg-birch-success-bg text-birch-success-text"
+                        : "bg-birch-warning-bg text-birch-warning-text"
                     }`}
                   >
                     {detail.sudahIsi ? "Sudah Mengisi" : "Belum Mengisi"}
@@ -406,24 +579,33 @@ function Page() {
               </div>
             </div>
 
-            {detail.sudahIsi ? (
-              <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-6 text-sm text-emerald-700 shadow-sm sm:text-base">
-                Data sudah pernah diisi. Terima kasih atas partisipasinya.
+            {detail.jawabanTerakhir && (
+              <div className="rounded-3xl border border-birch-info-border bg-birch-info-bg p-5 text-sm text-birch-info-text shadow-sm sm:text-base">
+                Form di bawah sudah <strong>diisi otomatis dari Supabase</strong> (data
+                respons terakhir untuk nama ini). Silakan lanjutkan seperti mengisi biasa:
+                periksa, lengkapi, atau ubah isian lalu simpan.
               </div>
-            ) : (
-              <form
-                className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"
-                onSubmit={handleSubmit}
-              >
-                <h3 className="text-lg font-semibold text-slate-900">
-                  Form Pendataan Alumni
-                </h3>
+            )}
+            {detail.sudahIsi && !detail.jawabanTerakhir && (
+              <div className="rounded-3xl border border-birch-warning-border bg-birch-warning-bg p-5 text-sm text-birch-warning-text shadow-sm sm:text-base">
+                Status menunjukkan sudah mengisi, tetapi riwayat jawaban tidak ditemukan di
+                server. Silakan lengkapi formulir lalu simpan (atau hubungi admin).
+              </div>
+            )}
+
+            <form
+              className="rounded-3xl border border-birch-200 bg-birch-50 p-6 shadow-sm sm:p-8"
+              onSubmit={handleSubmit}
+            >
+              <h3 className="text-lg font-semibold text-birch-900">
+                Form Pendataan Alumni
+              </h3>
 
                 <div className="mt-4 grid gap-4">
-                  <label className="text-sm text-slate-700">
-                    Kesibukan <span className="text-rose-600">*</span>
+                  <label className="text-sm text-birch-700">
+                    Kesibukan <span className="text-birch-terracotta">*</span>
                     <input
-                      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none"
+                      className="mt-2 w-full rounded-xl border border-birch-300 px-4 py-3 text-birch-900 focus:border-birch-sage focus:outline-none"
                       type="text"
                       value={formData.kesibukan}
                       onChange={(event) =>
@@ -431,14 +613,15 @@ function Page() {
                       }
                       required
                     />
-                    <span className="text-xs text-slate-500">Contoh: Mahasiswa, Karyawan, Wiraswasta, Lainnya</span>
+                    <span className="text-xs text-birch-500">Contoh: Mahasiswa, Karyawan, Wiraswasta, Lainnya</span>
                   </label>
 
-                  <label className="text-sm text-slate-700">
-                    Nomer WhatsApp <span className="text-rose-600">*</span>
+                  <label className="text-sm text-birch-700">
+                    Nomer WhatsApp <span className="text-birch-terracotta">*</span>
                     <input
                       type="text"
-                      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none"
+                      required
+                      className="mt-2 w-full rounded-xl border border-birch-300 px-4 py-3 text-birch-900 focus:border-birch-sage focus:outline-none"
                       value={formData.sosial_media}
                       onChange={(event) =>
                         setFormData((prev) => ({
@@ -447,66 +630,82 @@ function Page() {
                         }))
                       }
                     />
-                    <span className="text-xs text-slate-500">Contoh: 081234567890</span>
+                    <span className="text-xs text-birch-500">Contoh: 081234567890</span>
                   </label>
 
-                  <label className="text-sm text-slate-700">
-                    Domisili <span className="text-rose-600">*</span>
+                  <label className="text-sm text-birch-700">
+                    Domisili <span className="text-birch-terracotta">*</span>
                     <input
-                      className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none"
+                      className="mt-2 w-full rounded-xl border border-birch-300 px-4 py-3 text-birch-900 focus:border-birch-sage focus:outline-none"
                       value={formData.domisili}
                       onChange={(event) =>
                         setFormData((prev) => ({ ...prev, domisili: event.target.value }))
                       }
                       required
                     />
-                    <span className="text-xs text-slate-500">Contoh: tempat tinggal saat ini</span>
+                    <span className="text-xs text-birch-500">Contoh: tempat tinggal saat ini</span>
                   </label>
 
-                  <label className="text-sm text-slate-700">
-  Sosial Media
+                  <label className="text-sm text-birch-700">
+                    Sosial Media
 
-                    <div className="mt-3 space-y-3 rounded-xl border border-slate-300 p-4">
-                      {[
-                        "Instagram",
-                        "TikTok",
-                        "X",
-                        "LinkedIn",
-                      ].map((item) => (
+                    <div className="mt-3 space-y-3 rounded-xl border border-birch-300 p-4">
+                      {(
+                        [
+                          { label: "Instagram", field: "instagram" as const },
+                          { label: "TikTok", field: "tiktok" as const },
+                          { label: "X", field: "twitter" as const },
+                          { label: "LinkedIn", field: "linkedin" as const },
+                        ] as const
+                      ).map(({ label, field }) => (
                         <div
-                          key={item}
+                          key={field}
                           className="ml-2 flex flex-col gap-2 sm:flex-row sm:items-center"
                         >
-                          <span className="w-28 text-sm text-slate-600">{item}</span>
+                          <span className="w-28 text-sm text-birch-600">{label}</span>
 
                           <input
                             type="text"
-                            placeholder={`Username / link ${item}`}
-                            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none"
+                            placeholder={`Username / link ${label}`}
+                            value={formData[field]}
+                            onChange={(event) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                [field]: event.target.value,
+                              }))
+                            }
+                            className="flex-1 rounded-lg border border-birch-300 px-3 py-2 text-sm text-birch-900 focus:border-birch-sage focus:outline-none"
                           />
                         </div>
                       ))}
 
                       <div className="ml-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <span className="w-28 text-sm text-slate-600">Lainnya</span>
+                        <span className="w-28 text-sm text-birch-600">Lainnya</span>
 
                         <input
                           type="text"
-                          placeholder="Platform lain yang ingin   dibagikan"
-                          className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-slate-500 focus:outline-none"
+                          placeholder="Platform lain yang ingin dibagikan"
+                          value={formData.sosial_lainnya}
+                          onChange={(event) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              sosial_lainnya: event.target.value,
+                            }))
+                          }
+                          className="flex-1 rounded-lg border border-birch-300 px-3 py-2 text-sm text-birch-900 focus:border-birch-sage focus:outline-none"
                         />
                       </div>
                     </div>
 
-                    <span className="mt-2 block text-xs text-slate-500">
+                    <span className="mt-2 block text-xs text-birch-500">
                       Isi akun yang berkenan untuk dibagikan kepada sesama alumni.
                     </span>
                   </label>
 
-                  <label className="text-sm text-slate-700">
-                    Ikut Reuni <span className="text-rose-600">*</span>
+                  <label className="text-sm text-birch-700">
+                    Ikut Reuni <span className="text-birch-terracotta">*</span>
                     <select
-                      className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none"
+                      className="mt-2 w-full rounded-xl border border-birch-300 bg-birch-50 px-4 py-3 text-birch-900 focus:border-birch-sage focus:outline-none"
                       value={formData.ikut_reuni}
                       onChange={(event) =>
                         setFormData((prev) => ({ ...prev, ikut_reuni: event.target.value }))
@@ -518,25 +717,25 @@ function Page() {
                       <option value="Tidak">Tidak</option>
                       <option value="Mungkin">Mungkin</option>
                     </select>
-                    <span className="text-xs text-slate-500">Reuni Marhalah 100tahun gontor kemungkinan di bulan september 2026</span>
+                    <span className="text-xs text-birch-500">Reuni Marhalah 100tahun gontor kemungkinan di bulan september 2026</span>
                   </label>
 
-                  <label className="text-sm text-slate-700">
+                  <label className="text-sm text-birch-700">
                     Saran untuk Prestigious Cares
                     <textarea
-                      className="mt-2 min-h-24 w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none"
+                      className="mt-2 min-h-24 w-full rounded-xl border border-birch-300 px-4 py-3 text-birch-900 focus:border-birch-sage focus:outline-none"
                       value={formData.ide_alumni}
                       onChange={(event) =>
                         setFormData((prev) => ({ ...prev, ide_alumni: event.target.value }))
                       }
                     />
-                    <span className="text-xs text-slate-500">Contoh: Saran apapun sangat berharga untuk kita semua</span>
+                    <span className="text-xs text-birch-500">Contoh: Saran apapun sangat berharga untuk kita semua</span>
                   </label>
 
-                  {/*<label className="text-sm text-slate-700">
-                    Pilihan Merchandise <span className="text-rose-600">*</span>
+                  {/*<label className="text-sm text-birch-700">
+                    Pilihan Merchandise <span className="text-birch-terracotta">*</span>
                     <select
-                      className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-slate-500 focus:outline-none"
+                      className="mt-2 w-full rounded-xl border border-birch-300 bg-birch-50 px-4 py-3 text-birch-900 focus:border-birch-sage focus:outline-none"
                       value={formData.merchandise_vote}
                       onChange={(event) =>
                         setFormData((prev) => ({
@@ -555,43 +754,60 @@ function Page() {
                     </select>
                   </label>*/}
 
-                  <label className="text-sm text-slate-700">
-                    Pilihan Merchandise
+                  <label className="text-sm text-birch-700">
+                    Pilihan Merchandise <span className="text-birch-terracotta">*</span>
                   </label>
-                  <div className="mt-2 rounded-xl border border-slate-300 p-4">
+                  <div className="mt-2 rounded-xl border border-birch-300 p-4">
                     <div className="flex flex-wrap gap-4">
-                      {["Kaos", "Jaket", "Polo Shirt", "Topi", "Mug"].map((item) => (
+                      {MERCHANDISE_OPTIONS.map((item) => (
                         <label
                           key={item}
-                          className="flex items-center gap-2 text-sm text-slate-700"
+                          className="flex items-center gap-2 text-sm text-birch-700"
                         >
                           <input
                             type="checkbox"
-                            className="h-4 w-4 rounded border-slate-300"
+                            checked={merchandiseSelections[item]}
+                            onChange={(event) =>
+                              setMerchandiseSelections((prev) => ({
+                                ...prev,
+                                [item]: event.target.checked,
+                              }))
+                            }
+                            className="h-4 w-4 rounded border-birch-300"
                           />
                           <span>{item}</span>
                         </label>
                       ))}
                     </div>
-                    <span className="text-xs text-slate-500">Harga Merchandise akan diumumkan dengan adanya harga tambahan untuk donasi acara Reuni 100tahun</span>
+                    <span className="text-xs text-birch-500">
+                      Harga Merchandise akan diumumkan dengan adanya harga tambahan untuk donasi
+                      acara Reuni 100tahun. Pilih minimal satu opsi atau isi ide di bawah.
+                    </span>
 
                     <div className="mt-4">
                       <input
                         type="text"
                         placeholder="Ide merchandise lain..."
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:border-slate-500 focus:outline-none"
+                        value={formData.merchandise_ide_lain}
+                        onChange={(event) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            merchandise_ide_lain: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-lg border border-birch-300 px-3 py-2 text-sm text-birch-700 focus:border-birch-sage focus:outline-none"
                       />
                     </div>
                   </div>
                 </div>
 
                 {submitError && (
-                  <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  <p className="mt-4 rounded-xl border border-birch-danger-border bg-birch-danger-bg px-4 py-3 text-sm text-birch-danger-text">
                     {submitError}
                   </p>
                 )}
                 {thanksMessage && (
-                  <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  <p className="mt-4 rounded-xl border border-birch-success-border bg-birch-success-bg px-4 py-3 text-sm text-birch-success-text">
                     {thanksMessage}
                   </p>
                 )}
@@ -599,7 +815,7 @@ function Page() {
                 <button
                   type="submit"
                   disabled={submitLoading || !FORM_SUBMIT_ENABLED}
-                  className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400 sm:w-auto"
+                  className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-birch-bark px-6 py-3 text-sm font-semibold text-birch-50 transition hover:bg-birch-800 disabled:cursor-not-allowed disabled:bg-birch-300 sm:w-auto"
                 >
                   {!FORM_SUBMIT_ENABLED
                     ? "Kirim dinonaktifkan sementara"
@@ -609,13 +825,12 @@ function Page() {
                   {/* hapus saat ready */}
                 </button>
               </form>
-            )}
           </section>
         )}
       </main>
 
       {toastMessage && (
-        <div className="fixed bottom-4 right-4 rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white shadow-lg">
+        <div className="fixed bottom-4 right-4 rounded-xl bg-birch-bark px-4 py-3 text-sm font-medium text-birch-50 shadow-lg">
           {toastMessage}
         </div>
       )}
