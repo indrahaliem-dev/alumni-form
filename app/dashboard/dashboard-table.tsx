@@ -13,10 +13,20 @@ export type DashboardRow = {
   whatsapp: string;
   domisili: string;
   ikutReuni: string;
+  merchandiseVote: string;
   createdAt: string | null;
 };
 
-type SortKey = "nama" | "konsulat" | "ikutReuni" | "createdAt";
+type SortKey =
+  | "nama"
+  | "nomorId"
+  | "konsulat"
+  | "whatsapp"
+  | "kesibukan"
+  | "domisili"
+  | "ikutReuni"
+  | "merchandiseVote"
+  | "createdAt";
 type SortDirection = "asc" | "desc";
 
 function formatDate(value: string | null) {
@@ -35,6 +45,20 @@ export default function DashboardTable({ data }: { data: DashboardRow[] }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("createdAt");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+
+  const handleHeaderSort = (nextKey: SortKey) => {
+    if (sortKey === nextKey) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(nextKey);
+    setSortDirection("asc");
+  };
+
+  const sortIndicator = (key: SortKey) => {
+    if (sortKey !== key) return "↕";
+    return sortDirection === "asc" ? "↑" : "↓";
+  };
 
   const konsulatOptions = useMemo(
     () => ["all", ...new Set(data.map((item) => item.konsulat).filter(Boolean))],
@@ -111,26 +135,8 @@ export default function DashboardTable({ data }: { data: DashboardRow[] }) {
           <option value="belum">Belum Isi</option>
         </select>
 
-        <div className="grid grid-cols-[1fr_auto] gap-2">
-          <select
-            className="rounded-xl border border-birch-300 bg-birch-50 px-4 py-3 text-sm text-birch-900 focus:border-birch-sage focus:outline-none"
-            value={sortKey}
-            onChange={(event) => setSortKey(event.target.value as SortKey)}
-          >
-            <option value="createdAt">Urut Tanggal Submit</option>
-            <option value="nama">Urut Nama</option>
-            <option value="konsulat">Urut Konsulat</option>
-            <option value="ikutReuni">Urut Ikut Reuni</option>
-          </select>
-          <button
-            type="button"
-            className="rounded-xl border border-birch-300 px-3 text-sm text-birch-700"
-            onClick={() =>
-              setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))
-            }
-          >
-            {sortDirection === "asc" ? "Asc" : "Desc"}
-          </button>
+        <div className="rounded-xl border border-birch-300 bg-birch-50 px-4 py-3 text-sm text-birch-700">
+          Urut dari header kolom tabel
         </div>
       </div>
 
@@ -142,15 +148,61 @@ export default function DashboardTable({ data }: { data: DashboardRow[] }) {
         <table className="min-w-full text-sm">
           <thead className="bg-birch-100 text-left text-birch-700">
             <tr>
-              <th className="px-4 py-3">Nama</th>
-              <th className="px-4 py-3">Nomor ID</th>
-              <th className="px-4 py-3">Konsulat</th>
-              <th className="px-4 py-3">WA</th>
-              <th className="px-4 py-3">Kesibukan</th>
-              <th className="px-4 py-3">Domisili</th>
-              <th className="px-4 py-3">Ikut Reuni</th>
+              <th className="px-4 py-3">
+                Nama{" "}
+                <button type="button" onClick={() => handleHeaderSort("nama")}>
+                  {sortIndicator("nama")}
+                </button>
+              </th>
+              <th className="px-4 py-3">
+                Nomor ID{" "}
+                <button type="button" onClick={() => handleHeaderSort("nomorId")}>
+                  {sortIndicator("nomorId")}
+                </button>
+              </th>
+              <th className="px-4 py-3">
+                Konsulat{" "}
+                <button type="button" onClick={() => handleHeaderSort("konsulat")}>
+                  {sortIndicator("konsulat")}
+                </button>
+              </th>
+              <th className="px-4 py-3">
+                WA{" "}
+                <button type="button" onClick={() => handleHeaderSort("whatsapp")}>
+                  {sortIndicator("whatsapp")}
+                </button>
+              </th>
+              <th className="px-4 py-3">
+                Kesibukan{" "}
+                <button type="button" onClick={() => handleHeaderSort("kesibukan")}>
+                  {sortIndicator("kesibukan")}
+                </button>
+              </th>
+              <th className="px-4 py-3">
+                Domisili{" "}
+                <button type="button" onClick={() => handleHeaderSort("domisili")}>
+                  {sortIndicator("domisili")}
+                </button>
+              </th>
+              <th className="px-4 py-3">
+                Ikut Reuni{" "}
+                <button type="button" onClick={() => handleHeaderSort("ikutReuni")}>
+                  {sortIndicator("ikutReuni")}
+                </button>
+              </th>
+              <th className="px-4 py-3">
+                Merchandise{" "}
+                <button type="button" onClick={() => handleHeaderSort("merchandiseVote")}>
+                  {sortIndicator("merchandiseVote")}
+                </button>
+              </th>
               <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Submit Terakhir</th>
+              <th className="px-4 py-3">
+                Submit Terakhir{" "}
+                <button type="button" onClick={() => handleHeaderSort("createdAt")}>
+                  {sortIndicator("createdAt")}
+                </button>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -163,6 +215,7 @@ export default function DashboardTable({ data }: { data: DashboardRow[] }) {
                 <td className="px-4 py-3">{item.kesibukan || "-"}</td>
                 <td className="px-4 py-3">{item.domisili || "-"}</td>
                 <td className="px-4 py-3">{item.ikutReuni || "-"}</td>
+                <td className="px-4 py-3">{item.merchandiseVote || "-"}</td>
                 <td className="px-4 py-3">
                   <span
                     className={`rounded-full px-2 py-1 text-xs font-semibold ${
@@ -179,7 +232,7 @@ export default function DashboardTable({ data }: { data: DashboardRow[] }) {
             ))}
             {sortedRows.length === 0 ? (
               <tr>
-                <td className="px-4 py-5 text-birch-600" colSpan={9}>
+                <td className="px-4 py-5 text-birch-600" colSpan={10}>
                   Tidak ada data yang cocok dengan filter.
                 </td>
               </tr>

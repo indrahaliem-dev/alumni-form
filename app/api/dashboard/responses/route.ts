@@ -20,6 +20,7 @@ type ResponseRow = {
   whatsapp: string | null;
   domisili: string | null;
   ikut_reuni: string | null;
+  merchandise_vote: string | null;
   created_at: string | null;
 };
 
@@ -36,7 +37,9 @@ export async function GET() {
 
   const { data: responses, error: responseError } = await supabase
     .from(SUPABASE_TABLE_RESPONSES)
-    .select("id, alumni_id, kesibukan, whatsapp, domisili, ikut_reuni, created_at")
+    .select(
+      "id, alumni_id, kesibukan, whatsapp, domisili, ikut_reuni, merchandise_vote, created_at"
+    )
     .order("created_at", { ascending: false });
 
   if (responseError) {
@@ -89,6 +92,7 @@ export async function GET() {
       whatsapp: item.whatsapp ?? "",
       domisili: item.domisili ?? "",
       ikutReuni: item.ikut_reuni ?? "",
+      merchandiseVote: item.merchandise_vote ?? "",
       createdAt: item.created_at ?? null,
     };
   });
