@@ -11,3 +11,11 @@ export const SUPABASE_TABLE_MASTER =
 
 export const SUPABASE_TABLE_RESPONSES =
   process.env.SUPABASE_TABLE_RESPONSES?.trim() || "alumni_responses";
+
+/** Tabel pengumpulan desain sayembara (jaket/kaos). */
+export const SUPABASE_TABLE_SAYEMBARA =
+  process.env.SUPABASE_TABLE_SAYEMBARA?.trim() || "sayembara_submissions";
+
+/** Bucket Storage untuk file desain sayembara. */
+export const SUPABASE_SAYEMBARA_BUCKET =
+  process.env.SUPABASE_SAYEMBARA_BUCKET?.trim() || "sayembara-designs";
