@@ -12,7 +12,7 @@ export const SUPABASE_TABLE_MASTER =
 export const SUPABASE_TABLE_RESPONSES =
   process.env.SUPABASE_TABLE_RESPONSES?.trim() || "alumni_responses";
 
-/** Tabel pengumpulan desain sayembara (jaket/kaos). */
+/** Tabel pengumpulan sayembara: nama, konsulat, WhatsApp, URL file desain. */
 export const SUPABASE_TABLE_SAYEMBARA =
   process.env.SUPABASE_TABLE_SAYEMBARA?.trim() || "sayembara_submissions";
 

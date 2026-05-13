@@ -7,7 +7,7 @@ const ACCEPT = "application/pdf,image/jpeg,image/png,image/webp,image/gif,.pdf,.
 export default function SayembaraPage() {
   const [nama, setNama] = useState("");
   const [konsulat, setKonsulat] = useState("");
-  const [ceritaDesain, setCeritaDesain] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [files, setFiles] = useState<FileList | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +28,7 @@ export default function SayembaraPage() {
       const body = new FormData();
       body.set("nama", nama.trim());
       body.set("konsulat", konsulat.trim());
-      body.set("cerita_desain", ceritaDesain.trim());
+      body.set("whatsapp", whatsapp.trim());
       for (let i = 0; i < files.length; i++) {
         body.append("files", files[i]);
       }
@@ -53,7 +53,7 @@ export default function SayembaraPage() {
       setSuccess(payload.message ?? "Terima kasih, data berhasil dikirim.");
       setNama("");
       setKonsulat("");
-      setCeritaDesain("");
+      setWhatsapp("");
       setFiles(null);
       (e.target as HTMLFormElement).reset();
     } catch (err) {
@@ -110,13 +110,16 @@ export default function SayembaraPage() {
             </label>
 
             <label className="text-sm text-birch-700">
-              Cerita desain <span className="text-birch-terracotta">*</span>
-              <textarea
-                className="mt-2 min-h-28 w-full rounded-xl border border-birch-300 bg-birch-50 px-4 py-3 text-birch-900 shadow-sm focus:border-birch-sage focus:outline-none"
-                value={ceritaDesain}
-                onChange={(ev) => setCeritaDesain(ev.target.value)}
+              WhatsApp <span className="text-birch-terracotta">*</span>
+              <input
+                type="tel"
+                inputMode="tel"
+                className="mt-2 w-full rounded-xl border border-birch-300 bg-birch-50 px-4 py-3 text-birch-900 shadow-sm focus:border-birch-sage focus:outline-none"
+                value={whatsapp}
+                onChange={(ev) => setWhatsapp(ev.target.value)}
                 required
-                placeholder="Ide, makna, atau arahan warna/elemen yang ingin disampaikan..."
+                autoComplete="tel"
+                placeholder="Contoh: +62812xxxxxxx"
               />
             </label>
 

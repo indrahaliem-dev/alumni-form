@@ -48,11 +48,11 @@ export async function POST(request: Request) {
 
   const nama = String(formData.get("nama") ?? "").trim();
   const konsulat = String(formData.get("konsulat") ?? "").trim();
-  const cerita_desain = String(formData.get("cerita_desain") ?? "").trim();
+  const whatsapp = String(formData.get("whatsapp") ?? "").trim();
 
-  if (!nama || !konsulat || !cerita_desain) {
+  if (!nama || !konsulat || !whatsapp) {
     return NextResponse.json(
-      { message: "Nama, konsulat, dan cerita desain wajib diisi." },
+      { message: "Nama, konsulat, dan nomor WhatsApp wajib diisi." },
       { status: 400 }
     );
   }
@@ -136,7 +136,7 @@ export async function POST(request: Request) {
     id: submissionId,
     nama,
     konsulat,
-    cerita_desain,
+    whatsapp,
     file_urls: fileUrls,
   });
 

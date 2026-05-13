@@ -22,12 +22,12 @@ create table if not exists public.sayembara_submissions (
   id uuid primary key default gen_random_uuid(),
   nama text not null,
   konsulat text not null,
-  cerita_desain text not null,
+  whatsapp text not null,
   file_urls text[] not null default '{}',
   created_at timestamptz not null default now()
 );
 
-comment on table public.sayembara_submissions is 'Pengumpulan desain sayembara jaket/kaos; file di bucket storage sayembara-designs.';
+comment on table public.sayembara_submissions is 'Pengumpulan desain sayembara jaket/kaos (nomor WhatsApp + file); bucket sayembara-designs.';
 
 create index if not exists sayembara_submissions_created_at_idx
   on public.sayembara_submissions (created_at desc);
